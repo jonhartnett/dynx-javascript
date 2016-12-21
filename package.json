@@ -8,8 +8,8 @@
     "email": "jon.hartnett@greymatter.ai"
   },
   "license": "UNLICENSED",
-  "main": "util.js",
-  "jsnext:main": "util.es7.js",
+  "main": "Dynx.min.js",
+  "jsnext:main": "Dynx.js",
   "buildOptions": {
     "entry": "Dynx.js",
     "output": "Dynx.min.js",
