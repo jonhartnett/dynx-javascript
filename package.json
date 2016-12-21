@@ -1,0 +1,20 @@
+{
+  "name": "dynx",
+  "description": "A smart dynamic variable engine.",
+  "repository": "https://github.com/jonhartnett/dynx-javascript",
+  "version": "0.0.3",
+  "author": {
+    "name": "Jonathan Hartnett",
+    "email": "jon.hartnett@greymatter.ai"
+  },
+  "license": "UNLICENSED",
+  "main": "util.js",
+  "jsnext:main": "util.es7.js",
+  "buildOptions": {
+    "entry": "Dynx.js",
+    "output": "Dynx.min.js",
+    "name": "dynx",
+    "isLibrary": true,
+    "sourceMaps": true
+  }
+}

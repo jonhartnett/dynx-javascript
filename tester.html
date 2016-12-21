@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Title</title>
+</head>
+<body>
+<script src="Dynx.min.js"></script>
+<script>
+    (function(Dynx) {
+        var i = new Dynx(2);
+        var j = Dynx(() => i.value + 6);
+        console.log(i.value, j.value);
+        i.value = 5;
+        console.log(i.value, j.value);
+    })(Dynx.default);
+</script>
+</body>
+</html>
