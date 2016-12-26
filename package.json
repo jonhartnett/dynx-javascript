@@ -11,10 +11,18 @@
   "main": "Dynx.min.js",
   "jsnext:main": "Dynx.js",
   "buildOptions": {
-    "entry": "Dynx.js",
-    "output": "Dynx.min.js",
     "name": "dynx",
     "isLibrary": true,
-    "sourceMaps": true
+    "sourceMaps": true,
+    "target": "node"
+  },
+  "devDependencies": {
+    "chai": "^3.5.0",
+    "mocha": "^3.2.0"
+  },
+  "scripts": {
+    "build": "node ../../runner.js build",
+    "watch": "node ../../runner.js build --watch",
+    "test": "./node_modules/.bin/mocha"
   }
 }

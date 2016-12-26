@@ -1,4 +1,4 @@
-export function init(Dynx, DynxType){
+export function init(Dynx){
     /**
      * An condition function for a Dynx.
      * @typedef {Function} Condition
@@ -13,75 +13,85 @@ export function init(Dynx, DynxType){
      * @returns {*} The transformed value.
      */
 
-    function createBasicCond(parentDynx, _ifThens=[], _elseThen=undefined){
-        let cond = new Dynx();
-        cond.type = DynxType.INHERIT;
-        cond._ifThens = _ifThens;
-        cond._elseThen = _elseThen;
-        /**
-         * Creates a condition.
-         * Note: If called with one parameter, the parameter becomes the "then" and the condition becomes a truthy test.
-         * @this Dynx
-         * @param {Condition|*} condition - The condition to test.
-         * @param {*} [then] - The result to return on success.
-         * @returns {Dynx} This conditional for chaining.
-         */
-        cond.if = function(condition, then){
-            if(arguments.length == 1){
-                return cond.if(x => Boolean(x), ...arguments);
-            }
+    /**
+     * Creates a condition.
+     * Note: If called with one parameter, the parameter becomes the "then" and the condition becomes a truthy test.
+     * @this Dynx
+     * @param {Condition|*} condition - The condition to test.
+     * @param {*} [then] - The result to return on success.
+     * @returns {Dynx} This conditional for chaining.
+     */
+    function ifFunc(condition, then){
+        if(arguments.length == 1){
+            return ifFunc.call(this, x => Boolean(x), ...arguments);
+        }
+        //if static, we need to recreate to "change"
+        if(this.isFinal){
+            let thens = [...this._ifThens];
             this._ifThens.push({condition, then});
-            //if static, we need to recreate to "change"
-            if(this.type == DynxType.STATIC){
-                return createBasicCond(parentDynx, _ifThens, _elseThen);
-            }else{
-                this.update();
-            }
-            return this;
-        };
-        /**
-         * Creates an inverted condition.
-         * Note: If called with one parameter, the parameter becomes the "then" and the condition becomes a falsey test.
-         * @this Dynx
-         * @param {Condition|*} condition - The condition to inversely test.
-         * @param {*} [then] - The result to return on success.
-         * @returns {Dynx} This conditional for chaining.
-         */
-        cond.ifnot = function(condition, then){
-            if(arguments.length == 1){
-                return cond.if(x => !Boolean(x), ...arguments);
-            }else{
-                return cond.if(x => !condition(x), then);
-            }
-        };
-        /**
-         * Sets the else value.
-         * @this Dynx
-         * @param {*} then - The value to return if all conditions fail.
-         * @returns {Dynx} This conditional for chaining.
-         */
-        cond.else = function(then){
+            return createCond(this._parent, thens, this._elseThen);
+        }else{
+            this._ifThens.push({condition, then});
+            this.update();
+        }
+        return this;
+    }
+
+    /**
+     * Creates an inverted condition.
+     * Note: If called with one parameter, the parameter becomes the "then" and the condition becomes a falsey test.
+     * @this Dynx
+     * @param {Condition|*} condition - The condition to inversely test.
+     * @param {*} [then] - The result to return on success.
+     * @returns {Dynx} This conditional for chaining.
+     */
+    function ifNotFunc(condition, then){
+        if(arguments.length == 1){
+            return ifFunc.call(this, x => !Boolean(x), ...arguments);
+        }else{
+            return ifFunc.call(this, x => !condition(x), then);
+        }
+    }
+
+    /**
+     * Sets the else value.
+     * @this Dynx
+     * @param {*} then - The value to return if all conditions fail.
+     * @returns {Dynx} This conditional for chaining.
+     */
+    function elseFunc(then){
+        //if static, we need to recreate to "change"
+        if(this.isFinal){
+            return createCond(this._parent, this._ifThens, then);
+        }else{
             this._elseThen = then;
-            //if static, we need to recreate to "change"
-            if(this.type == DynxType.STATIC){
-                return createBasicCond(parentDynx, _ifThens, _elseThen);
-            }else{
-                this.update();
-            }
-            return this;
-        };
-        /** @this Dynx */
-        cond.exp = function(){
-            let value = parentDynx.value;
-            if(this._ifThens){
-                for(let {condition, then} of this._ifThens){
-                    if(condition(value)) {
-                        return then;
-                    }
+            this.update();
+        }
+        return this;
+    }
+
+    /** @this Dynx */
+    function expression(){
+        let value = this._parent.value;
+        if(this._ifThens){
+            for(let {condition, then} of this._ifThens){
+                if(condition(value)) {
+                    return then;
                 }
             }
-            return this._elseThen;
-        };
+        }
+        return this._elseThen;
+    }
+
+    function createCond(parentDynx, _ifThens=[], _elseThen=undefined){
+        let cond = new Dynx();
+        cond._parent = parentDynx;
+        cond._ifThens = _ifThens;
+        cond._elseThen = _elseThen;
+        cond.if = ifFunc;
+        cond.ifnot = ifNotFunc;
+        cond.else = elseFunc;
+        cond.finalize(expression);
         return cond;
     }
 
@@ -94,7 +104,7 @@ export function init(Dynx, DynxType){
      * @returns {Dynx} This conditional for chaining.
      */
     Dynx.prototype.if = function(condition, then){
-        return createBasicCond(this).if(...arguments);
+        return createCond(this).if(...arguments);
     };
 
     /**
@@ -106,30 +116,27 @@ export function init(Dynx, DynxType){
      * @returns {Dynx} This conditional for chaining.
      */
     Dynx.prototype.ifnot = function(condition, then){
-        return createBasicCond(this).ifnot(...arguments);
+        return createCond(this).ifnot(...arguments);
     };
 
-    function createSwitchCond(parentDynx, _cases={}, _defaultCase=undefined){
-        let cond = new Dynx();
-        cond.type = DynxType.INHERIT;
-        cond._cases = _cases;
-        cond._defaultCase = _defaultCase;
+    /**
+     * Creates a new switch-conditional Dynx.
+     * @returns {Dynx} A new switch-conditional Dynx.
+     */
+    Dynx.prototype.switch = function(){
+        let cond = createCond(this);
+        delete cond.if;
+        delete cond.ifnot;
+        delete cond.else;
         /**
          * Creates a case.
          * @this Dynx
-         * @param {*} value - The value to match.
+         * @param {*|Dynx} value - The value to match.
          * @param {*} then - The result to return on success.
          * @returns {Dynx} This conditional for chaining.
          */
         cond.case = function(value, then){
-            this._cases[value] = then;
-            //if static, we need to recreate to "change"
-            if(this.type == DynxType.STATIC){
-                return createSwitchCond(_cases, _defaultCase);
-            }else{
-                this.update();
-            }
-            return this;
+            return ifFunc.call(this, x => x === resolve(value), then);
         };
         /**
          * Sets the default case.
@@ -138,33 +145,9 @@ export function init(Dynx, DynxType){
          * @returns {Dynx} This conditional for chaining.
          */
         cond.default = function(then){
-            this._defaultCase = then;
-            //if static, we need to recreate to "change"
-            if(this.type == DynxType.STATIC){
-                return createSwitchCond(_cases, _defaultCase);
-            }else{
-                this.update();
-            }
-            return this;
-        };
-        /** @this Dynx */
-        cond.exp = function(){
-            let value = parentDynx.value;
-            if(value in this._cases){
-                return this._cases[value];
-            }else{
-                return this._defaultCase;
-            }
+            return elseFunc.call(this, then);
         };
         return cond;
-    }
-
-    /**
-     * Creates a new switch-conditional Dynx.
-     * @returns {Dynx} A new switch-conditional Dynx.
-     */
-    Dynx.prototype.switch = function(){
-        return createSwitchCond(this);
     };
 
     /**
@@ -173,40 +156,48 @@ export function init(Dynx, DynxType){
      * @returns {Dynx} A new transformation Dynx.
      */
     Dynx.prototype.transform = function(func){
-        let trans = new Dynx();
-        trans.type = DynxType.INHERIT;
+        return Dynx(() => func(this.value)).finalize();
+    };
+
+    /**
+     * Creates a new attribute Dynx.
+     * @param {string|Dynx} name - The attribute to get on the value.
+     * @returns {Dynx} A new attribute Dynx.
+     */
+    Dynx.prototype.attr = function(name){
+        let trans = new Dynx(undefined);
         trans.exp = () => {
-            return func(this.value);
+            let obj = this.value;
+            if(obj){
+                return obj[resolve(name)];
+            }
         };
         return trans;
     };
 
     /**
-     * Creates a new attribute Dynx.
-     * @param {string} name - The attribute to get on the value.
-     * @param {...*} [args] - The arguments to call a function attribute with.
+     * Creates a new function call Dynx.
+     * @param {string|Dynx} name - The function attribute to get on the value.
+     * @param {...*|Dynx} [args] - The arguments to call a function attribute with.
      * @returns {Dynx} A new attribute Dynx.
      */
-    Dynx.prototype.attr = function(name, ...args){
-        let trans = new Dynx();
-        trans.type = DynxType.INHERIT;
+    Dynx.prototype.func = function(name, ...args){
+        let trans = new Dynx(undefined);
         trans.exp = () => {
             let obj = this.value;
             if(obj){
-                let result = obj[name];
-                if(typeof result === 'function'){
-                    let specificArgs = args.map(value => {
-                        if(value instanceof Dynx){
-                            return value.value;
-                        }else{
-                            return value;
-                        }
-                    });
-                    result = result.call(obj, ...specificArgs);
-                }
+                let result = obj[resolve(name)];
+                result = result.call(obj, ...args.map(resolve));
                 return result;
             }
         };
         return trans;
     };
+
+    function resolve(obj){
+        if(obj instanceof Dynx)
+            return obj.value;
+        else
+            return obj;
+    }
 }

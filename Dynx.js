@@ -1,39 +1,11 @@
 import {init as initTransform} from "./DynxTransform";
 
 /**
- * Enum for Dynx types.
- * @readonly
- * @enum {number}
+ * Denotes an invalid Dynx variable. This might either not-yet-initialized or not-currently-valid.
+ * @type {Symbol}
  */
-//internally, types with larger values trump types with smaller for inherit calculations.
-export const DynxType = {
-    /**
-     * A static/temporary/constant dynx whose value doesn't change.
-     * Unlike other types, a STATIC can never change to another.
-     * Primarily used to simulate Dynx functions for non-Dynx values, or mark other types as finalized.
-     */
-    STATIC: 0,
-    /**
-     * A dynamic/changing/async dynx whose value changes.
-     */
-    DYNAMIC: 1,
-    /**
-     * A invalid/unloaded/async dynx whose value is not yet valid.
-     */
-    INVALID: 2,
-    /**
-     * A temporary type that inherits from values in expression.
-     */
-    INHERIT: 3
-};
-
-const TYPE = Symbol('type');
-const VALUE = Symbol('value');
-const EXP = Symbol('exp');
-const CALL_LISTENERS = Symbol('callListeners');
-const REFRESH_HANDLE = Symbol('refreshHandle');
-const ADD_LiSTENER = Symbol('addListener');
-const REMOVE_LISTENER = Symbol('removeListener');
+export const INVALID = Symbol('invalid');
+const NO_ARG = Symbol('NoArg');
 
 /**
  * An expression function for a Dynx.
@@ -62,39 +34,49 @@ const REMOVE_LISTENER = Symbol('removeListener');
  */
 class Dynx {
     /**
+     * Executes a block without subscribing to any triggered Dynxes.
+     * @param {Function} func - The function to be called.
+     * @param {[]} args - The arguments to call with.
+     * @returns {*} The return of the function.
+     */
+    static immune(func, ...args){
+        Dynx._childStack.push(undefined);
+        let result = func(...args);
+        Dynx._childStack.pop();
+        return result;
+    }
+
+    /**
      * Creates a new Dynx with an optional initial value.
      * @constructor
      * @param {*} [initial=undefined] - The initial constant value.
-     * @param {DynxType} [type=DYNAMIC] - The initial DynxType.
      */
-    constructor(initial=undefined, type=DynxType.DYNAMIC) {
-        this[VALUE] = initial;
-        this[TYPE] = type;
+    constructor(initial=undefined) {
+        this.value = initial;
     }
 
     /**
-     * Gets the current type.
-     * @returns {DynxType} The type.
+     * Returns true if 'value' is finalized.
+     * @returns {boolean} True if constant.
      */
-    get type(){
-        return this[TYPE];
+    get isConstant(){
+        return this.isFinal && !this.exp;
     }
 
     /**
-     * Sets the current type.
-     * @param {DynxType} value - The new type.
+     * Returns true if 'exp' is finalized.
+     * @returns {boolean} True if final.
      */
-    set type(value){
-        if(this.type === DynxType.STATIC)
-            throw new Error('[Dynx] Cannot modify a static Dynx.');
-        if(this[TYPE] !== value){
-            let oldType = this[TYPE];
-            this[TYPE] = value;
-            if(oldType === DynxType.INVALID)
-                this.update(true);
-            //update all listeners
-            this[CALL_LISTENERS]('typeChanges');
-        }
+    get isFinal(){
+        return this._isFinal || false;
+    }
+
+    /**
+     * Returns true if this Dynx is currently invalid.
+     * @returns {boolean} True if invalid.
+     */
+    get isInvalid(){
+        return this.value === INVALID;
     }
 
     /**
@@ -103,20 +85,16 @@ class Dynx {
      */
     get value() {
         //if currently evaluating an expression, add a subscription
-        if(Dynx.childStack.length > 0){
-            let top = Dynx.childStack.top;
-            if(top !== undefined && top !== this)
-            {
-                if(top.type === DynxType.INHERIT){
-                    top.pendingType = Math.max(top.pendingType, this.type);
-                }
-                if(this.type !== DynxType.STATIC){
-                    this.onUpdateSub(top.updateHandle);
-                }
+        if(Dynx._childStack.length > 0 && !this.isConstant){
+            let top = Dynx._childStack.top;
+            if(top !== undefined && top !== this){
+                if(top.isFinal)
+                    top._pendingConstant = false;
+                this.on('update', top.updateHandle);
             }
         }
         //return value
-        return this[VALUE];
+        return this._value;
     }
 
     /**
@@ -124,16 +102,31 @@ class Dynx {
      * @param {*} value - The new constant value.
      */
     set value(value) {
-        if(this.type === DynxType.STATIC)
-            throw new Error('[Dynx] Cannot change the value of a static Dynx.');
+        if(this.isFinal)
+            throw new Error('[Dynx] Cannot change the value of a finalized Dynx.');
         //make exp undefined to mark as constant
-        delete this[EXP];
-        if(this[VALUE] !== value){
+        delete this._exp;
+        if(this._init_value !== value){
             //set value and update
-            this[VALUE] = value;
-            if(this.type !== DynxType.INVALID)
-                this.update(true);
+            this._init_value = value;
+            this.update(true);
         }
+    }
+
+    /**
+     * Gets the current source value. This is the value before filters are applied.
+     * @return {*} The current source value.
+     */
+    get srcValue(){
+        return this._init_value;
+    }
+
+    /**
+     * Sets the current source value. This is the value before filters are applied.
+     * @param {*} value - The new source value.
+     */
+    set srcValue(value){
+        this.value = value;
     }
 
     /**
@@ -141,7 +134,7 @@ class Dynx {
      * @returns {Expression} The expression, or undefined if a constant.
      */
     get exp() {
-        return this[EXP];
+        return this._exp;
     }
 
     /**
@@ -149,15 +142,17 @@ class Dynx {
      * @param {Expression} value - The new expression.
      */
     set exp(value) {
-        if(this.type === DynxType.STATIC)
-            throw new Error('[Dynx] Cannot change the value of a static Dynx.');
+        if(this.isFinal)
+            throw new Error('[Dynx] Cannot change the value of a finalized Dynx.');
         //set expression and update
-        if(typeof value !== 'function'){
-            throw new Error(`[Dynx] Exp must be a function, not ${value}.`)
-        }
-        this[EXP] = value;
-        if(this.type !== DynxType.INVALID)
+        if(typeof value !== 'function')
+            throw new Error(`[Dynx] Exp must be a function, not ${value}.`);
+        delete this._init_value;
+        if(this._exp !== value){
+            //set expression and update
+            this._exp = value;
             this.update();
+        }
     }
 
     /**
@@ -166,110 +161,87 @@ class Dynx {
      */
     update(force=false) {
         //call preUpdate listeners
-        if(this.preupdates)
-            for(let listener of this.preupdates)
-                listener.call(this);
+        this._triggerEvent('pre-update');
 
-        //createElement var for new values
-        let newValue = this[VALUE];
+        //create var for new values
+        let newValue = this._init_value;
 
-        //if inherit, create pending var with initial type
-        if(this.type === DynxType.INHERIT){
-            this.pendingType = DynxType.STATIC;
-        }
+        //if final, create variable to detect non-constant parents
+        if(this.isFinal)
+            this._pendingConstant = true;
 
         //only evaluate if something might have changed
-        if(this[EXP] || this.filters) {
+        if(this._exp || this.filters){
             //createElement new handle
-            this[REFRESH_HANDLE]();
+            this._refreshHandle();
             //set child so we catch parents from evaluation and filtering
-            Dynx.childStack.push(this);
+            Dynx._childStack.push(this);
 
             //evaluate expression
-            if(this[EXP])
-                newValue = this[EXP].call(this);
+            if(this._exp)
+                newValue = this._exp.call(this);
             //filter value
             if(this.filters)
                 for(let filter of this.filters)
                     newValue = filter.call(this, newValue);
 
-            Dynx.childStack.pop();
+            Dynx._childStack.pop();
         }
 
-        //if inherit, set new type
-        if(this.type === DynxType.INHERIT){
-            this.type = this.pendingType;
-            delete this.pendingType;
-        }
-
-        //if changed, update VALUE and call listeners
-        if(newValue !== this[VALUE] || force){
+        //if changed, update _value and call listeners
+        if(newValue !== this._value || force){
             //set value to new
-            this[VALUE] = newValue;
+            this._value = newValue;
             //update all listeners
-            this[CALL_LISTENERS]('updates');
+            this._triggerEvent('update');
+        }
+
+        if(this.isFinal){
+            if(this._pendingConstant)
+                this.constant();
+            delete this._pendingConstant;
         }
 
         //call postUpdate listeners
-        if(this.postupdates)
-            for(let listener of this.postupdates)
-                listener.call(this);
-
-        //delete any unneeded references
-        if(this.type === DynxType.STATIC){
-            delete this.preupdates;
-            delete this[EXP];
-            delete this.filters;
-            delete this.updates;
-            delete this.postupdates;
-        }
+        this._triggerEvent('post-update');
     }
 
     /**
      * Calls this Dynx's listeners.
-     * @param {string} name - The type of listener.
+     * @param {string} event - The type of listener.
      * @private
      */
-    [CALL_LISTENERS](name){
-        //this method would be a simple loop with recursion, but listeners are called in a queue fashion to avoid stack overflows
-
-        const queueName = name + 'Queue';
-        const progressName = name + 'InProgress';
-
-        if(!Dynx[queueName])
-            Dynx[queueName] = [];
+    _triggerEvent(event){
+        let arrName = Dynx._getEventArrName(event);
+        //this method would be a simple loop with recursion, but listeners are called in a
+        //  queue fashion to avoid stack overflows
+        let isMaster = !('_queue' in Dynx);
+        if(isMaster)
+            Dynx._queue = [];
         //queue listeners for update
-        if(this[name]){
-            let listeners = this[name];
-            for(let i = 0; i < listeners.length; i++) {
-                let listener = listeners[i];
-                if(listener.obsolete){
-                    listeners.splice(i--, 1);
-                    if(listeners.length === 0){
-                        delete this[name];
-                        break;
-                    }
-                }else{
-                    Dynx[queueName].push(() => listener.call(this));
-                }
+        let arr = this[arrName];
+        if(arr){
+            arr = arr.filter(listener => !listener.obsolete);
+            if(arr.length != 0){
+                Dynx._queue.push(...arr);
+                this[arrName] = arr;
+            }else{
+                delete this[arrName];
             }
         }
         //if master manager hasn't been start, start one
-        if(!Dynx[progressName]){
-            Dynx[progressName] = true;
+        if(isMaster){
             let listener;
-            while(listener = Dynx[queueName].shift()){
+            while(listener = Dynx._queue.shift())
                 listener();
-            }
-            Dynx[progressName] = false;
-            delete Dynx[queueName];
+            delete Dynx._queue;
         }
     }
 
     /**
      * Refreshes this Dynx's update handle, which effectively discards all old parents.
      */
-    [REFRESH_HANDLE](){
+    _refreshHandle(){
         //delete old handle
         if(this.updateHandle)
             this.updateHandle.obsolete = true;
@@ -278,167 +250,181 @@ class Dynx {
     }
 
     /**
-     * Executes a block without subscribing to any Dynxes triggered.
-     * @param {Function} func - The function to be called.
-     * @param {[]} args - The arguments to call with.
-     * @returns {*} The return of the function.
-     */
-    executeImmune(func, ...args){
-        if(this !== Dynx.childStack.top){
-            throw new Error("[Dynx] SEVERE: Immune statements can only be executed immediately within a variable's expression function.")
-        }
-        Dynx.childStack.push(undefined);
-        let result = func(...args);
-        Dynx.childStack.pop();
-        return result;
-    }
-
-    /**
      * Adds a listener.
      * @private
-     * @param {string} group - The group (property) to add to.
+     * @param {string} arrName - The event collection to add to.
      * @param {Function} func - The function to add.
-     * @param {boolean} [first=false] - True to insert at front of list.
+     * @param {boolean} immediate - True make an initial call to the handler.
+     * @param {number} [priority=0] - The priority of the function.
      */
-    [ADD_LiSTENER](group, func, first){
-        if(this.type === DynxType.STATIC)
-            console.error('[Dynx] Subscription to a STATIC is unnecessary!');
-        if(!this[group])
-            this[group] = [];
-        if(first)
-            this[group].unshift(func);
-        else
-            this[group].push(func);
+    _addListener(arrName, func, immediate=false, priority=0){
+        if(this.isConstant){
+            if(immediate)
+                func();
+            else
+                console.error('[Dynx] Subscription to a finalized Dynx is unnecessary!');
+        }else{
+            func.priority = priority;
+            let arr;
+            if(arrName in this){
+                arr = this[arrName];
+            }else{
+                arr = this[arrName] = [];
+            }
+            if(arr.length == 0 || arr[arr.length - 1].priority >= priority){
+                arr.push(func);
+            }else{
+                let other;
+                for(let i = 0; i < arr.length; i++){
+                    other = arr[i];
+                    if(other.priority < priority){
+                        arr.splice(i, 0, func);
+                        break;
+                    }
+                }
+            }
+
+            if(immediate)
+                func();
+        }
     }
 
     /**
      * Removes a listener.
      * @private
-     * @param {string} group - The group (property) to remove from.
+     * @param {string} arrName - The event collection to remove from.
      * @param {Function} func - The function to remove.
      */
-    [REMOVE_LISTENER](group, func){
-        if(!this[group])
-            return;
-        let index = this[group].indexOf(func);
-        if(index !== -1){
-            this[group].splice(index, 1);
-            if(this[group].length === 0)
-                delete this[group];
+    _removeListener(arrName, func){
+        if(arrName in this){
+            let arr = this[arrName];
+            let i = arr.indexOf(func);
+            if(i != -1){
+                arr.splice(i, 1);
+                if(arr.length == 0)
+                    delete this[arrName];
+            }
         }
     }
 
     /**
-     * Adds a new filter.
-     * @param {Filter} handler - The filter to add.
-     * @param {boolean} [first=false] - True to insert at front of list.
+     * Returns the event array name for the given event.
+     * @private
+     * @param {string} event - The event to get for.
+     * @returns {string} The array name.
      */
-    onFilterSub(handler, first=false){
-        this[ADD_LiSTENER]('filters', handler, first);
-        this.update();
+    static _getEventArrName(event){
+        let arrName;
+        switch(event){
+            case 'pre-update':
+            case 'post-update':
+            case 'update':
+            case 'finalize':
+            case 'constant':
+                arrName = `${event}-listeners`;
+                break;
+            case 'filter':
+                arrName = 'filters';
+                break;
+            default:
+                throw new Error(`[Dynx] Unrecognized event ${event}.`);
+        }
+        return arrName;
     }
 
     /**
-     * Removes a filter.
-     * @param {Filter} handler - The filter to remove.
+     * Adds a new handler for a specific event.
+     * @param {string} event - The event to handle (update, preUpdate, postUpdate, filter, finalize, constant)
+     * @param {Filter|Listener} handler - The handler function.
+     * @param {boolean} [immediate=false] - True make an initial call to the handler.
+     * @param {number} [priority=0] - The priority of the handler (high is first).
+     * @return {Dynx} This for chaining.
      */
-    onFilterUnsub(handler) {
-        this[REMOVE_LISTENER]('filters', handler);
-        this.update();
+    on(event, handler, immediate=false, priority=0){
+        if(event === 'filter' && immediate)
+            throw new Error('[Dynx] Cannot use immediate with filter.');
+        let arrName = Dynx._getEventArrName(event);
+        this._addListener(arrName, handler, immediate, priority);
+        if(event === 'filter')
+            this.update();
+        return this;
     }
 
     /**
-     * Adds a new update listener.
-     * @param {Listener} handler - The listener to add.
-     * @param {boolean} [first=false] - True to insert at front of list.
+     * Removes a handle from a specific event.
+     * @param {string} event - The event to no longer handle (update, preUpdate, postUpdate, filter, finalize, constant)
+     * @param {Filter|Listener} handler - The handler function.
+     * @return {Dynx} This for chaining.
      */
-    onUpdateSub(handler, first=false) {
-        this[ADD_LiSTENER]('updates', handler, first);
+    off(event, handler){
+        let arrName = Dynx._getEventArrName(event);
+        this._removeListener(arrName, handler);
+        if(event === 'filter')
+            this.update();
+        return this;
     }
 
     /**
-     * Removes an update listener.
-     * @param {Listener} handler - The listener to remove.
+     * Invalidates and returns this Dynx.
+     * @return {Dynx} This for chaining.
      */
-    onUpdateUnsub(handler) {
-        this[REMOVE_LISTENER]('updates', handler);
+    invalidate(){
+        this.value = INVALID;
+        return this;
     }
 
     /**
-     * Adds a new pre-update listener.
-     * @param {Listener} handler - The listener to add.
-     * @param {boolean} [first=false] - True to insert at front of list.
+     * Makes this Dynx final with the given expression. If the value is omitted, uses the current expression.
+     * @param {Expression} exp - The expression to finalize with.
+     * @return {Dynx} This for chaining.
      */
-    onPreUpdateSub(handler, first=false) {
-        this[ADD_LiSTENER]('preupdates', handler, first);
+    finalize(exp=NO_ARG){
+        if(this.isFinal)
+            return this;
+        if(exp !== NO_ARG){
+            if(this.isFinal)
+                throw new Error('[Dynx] Cannot change the value of a finalized Dynx.');
+            if(typeof exp !== 'function')
+                throw new Error(`[Dynx] Exp must be a function, not ${exp}.`);
+            this._exp = exp;
+        }
+        this._isFinal = true;
+        this.update(true);
+        return this;
     }
 
     /**
-     * Removes a pre-update listener.
-     * @param {Listener} handler - The listener to remove.
+     * Makes this Dynx a constant with the given value. If the value is omitted, uses the current value of the Dynx.
+     * @param {*} [value] - The value to mark as a constant with.
+     * @return {Dynx} This for chaining.
      */
-    onPreUpdateUnsub(handler) {
-        this[REMOVE_LISTENER]('preupdates', handler);
-    }
-
-    /**
-     * Adds a new post-update listener.
-     * @param {Listener} handler - The listener to add.
-     * @param {boolean} [first=false] - True to insert at front of list.
-     */
-    onPostUpdateSub(handler, first=false) {
-        this[ADD_LiSTENER]('postupdates', handler, first);
-    }
-
-    /**
-     * Removes a post-update listener.
-     * @param {Listener} handler - The listener to remove.
-     */
-    onPostUpdateUnsub(handler) {
-        this[REMOVE_LISTENER]('postupdates', handler);
-    }
-
-    /**
-     * Adds a new type-change listener.
-     * @param {Listener} handler - The listener to add.
-     * @param {boolean} [first=false] - True to insert at front of list.
-     */
-    onTypeChangeSub(handler, first=false) {
-        this[ADD_LiSTENER]('typeChanges', handler, first);
-    }
-
-    /**
-     * Removes a type-change listener.
-     * @param {Listener} handler - The listener to remove.
-     */
-    onTypeChangeUnsub(handler) {
-        this[REMOVE_LISTENER]('typeChanges', handler);
-    }
-
-    /**
-     * Sets the value to the given and re-types to STATIC.
-     * @param {*} value - The final value.
-     * @see DynxType.STATIC
-     */
-    finalize(value){
-        this.value = value;
-        this.type = DynxType.STATIC;
-    }
-
-    valueOf(){
-        return this.value;
+    constant(value=NO_ARG){
+        if(this.isConstant)
+            return this;
+        if(value !== NO_ARG){
+            if(this.isFinal)
+                throw new Error('[Dynx] Cannot change the value of a finalized Dynx.');
+            this._init_value = value;
+        }else{
+            this._init_value = this._value;
+        }
+        delete this._exp;
+        this._isFinal = true;
+        this.update(true);
+        return this;
     }
 }
+
 /**
  * The stack of currently-evaluating Dynxes.
  * @private
  * @type {Array}
  */
-Dynx.childStack = function(){
+Dynx._childStack = function(){
     let stack = [];
     //create top prop for convenience
     Object.defineProperty(stack, 'top', {
-        get: function(){
+        get(){
             return this[this.length - 1];
         }
     });
@@ -447,25 +433,29 @@ Dynx.childStack = function(){
 
 
 //defined a wrapper function that allows new-less calls to set the expression.
-export default (function(simpleDynx) {
+export default (function(originalDynx) {
     /**
      * Creates a new Dynx with an optional initial value or expression.
      * Treats input as value if called with new, and as an expression if called without.
      * @constructor
      * @param {*|Expression} [value] - The initial value or expression.
-     * @param {DynxType} [type=DYNAMIC] - The type of the Dynx.
      * @returns {Dynx} - The new Dynx instance.
      */
-    const Dynx = function Dynx(value, type=DynxType.DYNAMIC){
+    const Dynx = function Dynx(value){
         if(this && this instanceof Dynx){
-            return new simpleDynx(...arguments);
+            return new originalDynx(...arguments);
         }else{
-            let dynx = new Dynx(undefined, type);
+            let dynx = new Dynx(undefined);
             dynx.exp = value;
             return dynx;
         }
     };
-    Dynx.prototype = simpleDynx.prototype;
-    initTransform(Dynx, DynxType);
+    //fix inheritance
+    Dynx.prototype = originalDynx.prototype;
+    //fix .constructor
+    Dynx.prototype.constructor = Dynx;
+    //fix static methods
+    Object.setPrototypeOf(Dynx, originalDynx);
+    initTransform(Dynx);
     return Dynx;
 }(Dynx));
