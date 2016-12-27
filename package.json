@@ -10,6 +10,9 @@
   "license": "UNLICENSED",
   "main": "Dynx.min.js",
   "jsnext:main": "Dynx.js",
+  "localDependencies": [
+    "greyforce-build"
+  ],
   "buildOptions": {
     "name": "dynx",
     "isLibrary": true,
@@ -21,8 +24,8 @@
     "mocha": "^3.2.0"
   },
   "scripts": {
-    "build": "node ../../runner.js build",
-    "watch": "node ../../runner.js build --watch",
-    "test": "./node_modules/.bin/mocha"
+    "build": "greyforce-build",
+    "watch": "greyforce-build --watch",
+    "test": "mocha"
   }
 }
