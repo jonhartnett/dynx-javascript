@@ -1,4 +1,4 @@
-import {init as initTransform} from "./DynxTransform";
+import {init as initTransform} from "./dynx-transform";
 
 /**
  * Denotes an invalid Dynx variable. This might either not-yet-initialized or not-currently-valid.

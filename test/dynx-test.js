@@ -1,6 +1,6 @@
-const mocha = require('mocha');
-const assert = require('chai').assert;
-const { 'default': Dynx, INVALID } = require('../Dynx.min');
+import mocha from 'mocha';
+import {assert} from 'chai';
+import Dynx, {INVALID} from '../dynx';
 
 mocha.describe('Dynx', () => {
     mocha.describe('value', () => {
