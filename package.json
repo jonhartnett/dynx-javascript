@@ -8,8 +8,8 @@
     "email": "jon.hartnett@greymatter.ai"
   },
   "license": "UNLICENSED",
-  "main": "build/dynx.js",
-  "jsnext:main": "dynx.js",
+  "main": "dest/dynx.js",
+  "jsnext:main": "src/dynx.js",
   "localDependencies": [
     "greyforce-build"
   ],
@@ -26,6 +26,6 @@
   "scripts": {
     "build": "greyforce-build",
     "watch": "greyforce-build --watch",
-    "test": "mocha build/test"
+    "test": "mocha dest/test"
   }
 }
