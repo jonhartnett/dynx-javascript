@@ -9,7 +9,7 @@
   },
   "license": "UNLICENSED",
   "main": "dest/dynx.js",
-  "jsnext:main": "src/dynx.js",
+  "module": "src/dynx.js",
   "localDependencies": [
     "greyforce-build"
   ],
