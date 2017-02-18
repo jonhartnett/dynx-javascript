@@ -3,29 +3,28 @@
   "description": "A smart dynamic variable engine.",
   "repository": "https://github.com/jonhartnett/dynx-javascript",
   "version": "0.0.3",
+  "private": true,
   "author": {
     "name": "Jonathan Hartnett",
     "email": "jon.hartnett@greymatter.ai"
   },
   "license": "UNLICENSED",
-  "main": "dest/dynx.js",
   "module": "src/dynx.js",
+  "main": "dest/node/dynx.js",
+  "browser": "dest/web/dynx.js",
   "localDependencies": [
     "greyforce-build"
   ],
-  "buildOptions": {
-    "name": "dynx",
-    "sourceMaps": true,
-    "target": "node"
-  },
   "devDependencies": {
     "chai": "^3.5.0",
-    "mocha": "^3.2.0",
-    "babel-runtime": "^6.20.0"
+    "mocha": "^3.2.0"
   },
   "scripts": {
     "build": "greyforce-build",
     "watch": "greyforce-build --watch",
-    "test": "mocha dest/test"
+    "test": "mocha dest/node/test"
+  },
+  "engines": {
+    "node": ">=7.2.0"
   }
 }
