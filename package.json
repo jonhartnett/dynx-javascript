@@ -12,9 +12,9 @@
   "module": "src/dynx.js",
   "main": "dest/node/dynx.js",
   "browser": "dest/web/dynx.js",
-  "localDependencies": [
-    "greyforce-build"
-  ],
+  "build": {
+    "target": "node"
+  },
   "devDependencies": {
     "chai": "^3.5.0",
     "mocha": "^3.2.0"
