@@ -213,28 +213,42 @@ class Dynx {
      */
     _triggerEvent(event){
         let arrName = Dynx._getEventArrName(event);
-        //this method would be a simple loop with recursion, but listeners are called in a
-        //  queue fashion to avoid stack overflows
-        let isMaster = !('_queue' in Dynx);
-        if(isMaster)
-            Dynx._queue = [];
-        //queue listeners for update
-        let arr = this[arrName];
-        if(arr){
-            arr = arr.filter(listener => !listener.obsolete);
-            if(arr.length != 0){
-                Dynx._queue.push(...arr);
-                this[arrName] = arr;
-            }else{
-                delete this[arrName];
+        if(event === 'update'){
+            //this method would be a simple loop with recursion,
+            //  but listeners from sub-dynxes are called in a cue
+            //  to avoid stack overflows
+            let isMaster = !('_queue' in Dynx);
+            if(isMaster)
+                Dynx._queue = [];
+            //queue listeners for update
+            let arr = this[arrName];
+            if(arr){
+                arr = arr.filter(listener => listener.dynxListener !== null);
+                if(arr.length != 0){
+                    for(let lis of arr){
+                        if(lis.dynxListener)
+                            Dynx._queue.push(lis);
+                        else
+                            lis();
+                    }
+                    this[arrName] = arr;
+                }else{
+                    delete this[arrName];
+                }
             }
-        }
-        //if master manager hasn't been start, start one
-        if(isMaster){
-            let listener;
-            while(listener = Dynx._queue.shift())
-                listener();
-            delete Dynx._queue;
+            //if master manager hasn't been start, start one
+            if(isMaster){
+                let listener;
+                while(listener = Dynx._queue.shift())
+                    listener();
+                delete Dynx._queue;
+            }
+        }else{
+            let arr = this[arrName];
+            if(arr){
+                for(let lis of arr)
+                    lis();
+            }
         }
     }
 
@@ -244,9 +258,10 @@ class Dynx {
     _refreshHandle(){
         //delete old handle
         if(this.updateHandle)
-            this.updateHandle.obsolete = true;
+            this.updateHandle.dynxListener = null;
         //create new one
         this.updateHandle = () => this.update();
+        this.updateHandle.dynxListener = true;
     }
 
     /**
