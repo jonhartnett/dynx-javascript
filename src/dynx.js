@@ -68,7 +68,7 @@ class Dynx {
      * @returns {boolean} True if final.
      */
     get isFinal(){
-        return this._isFinal || false;
+        return this._isFinal;
     }
 
     /**
@@ -111,6 +111,20 @@ class Dynx {
             this._init_value = value;
             this.update(true);
         }
+    }
+
+    /**
+     * Alias for @see value.
+     */
+    get x(){
+        return this.value;
+    }
+
+    /**
+     * Alias for @see value.
+     */
+    set x(value){
+        this.value = value;
     }
 
     /**
@@ -161,13 +175,13 @@ class Dynx {
      */
     update(force=false) {
         //call preUpdate listeners
-        this._triggerEvent('pre-update');
+        this._triggerEvent('pre-update', this._value);
 
         //create var for new values
         let newValue = this._init_value;
 
         //if final, create variable to detect non-constant parents
-        if(this.isFinal)
+        if(this._isFinal && this.exp)
             this._pendingConstant = true;
 
         //only evaluate if something might have changed
@@ -193,25 +207,28 @@ class Dynx {
             //set value to new
             this._value = newValue;
             //update all listeners
-            this._triggerEvent('update');
+            this._triggerEvent('update', this._value);
         }
 
-        if(this.isFinal){
-            if(this._pendingConstant)
+        if(this._isFinal && this.exp){
+            if(this._pendingConstant){
+                this._init_value = this._value;
                 this.constant();
+            }
             delete this._pendingConstant;
         }
 
         //call postUpdate listeners
-        this._triggerEvent('post-update');
+        this._triggerEvent('post-update', this._value);
     }
 
     /**
      * Calls this Dynx's listeners.
      * @param {string} event - The type of listener.
+     * @param {*[]} [args] - The arguments to call it with.
      * @private
      */
-    _triggerEvent(event){
+    _triggerEvent(event, ...args){
         let arrName = Dynx._getEventArrName(event);
         if(event === 'update'){
             //this method would be a simple loop with recursion,
@@ -227,9 +244,9 @@ class Dynx {
                 if(arr.length != 0){
                     for(let lis of arr){
                         if(lis.dynxListener)
-                            Dynx._queue.push(lis);
+                            Dynx._queue.push(() => lis.call(this, ...args));
                         else
-                            lis();
+                            lis.call(this, ...args);
                     }
                     this[arrName] = arr;
                 }else{
@@ -247,7 +264,7 @@ class Dynx {
             let arr = this[arrName];
             if(arr){
                 for(let lis of arr)
-                    lis();
+                    lis.call(this, ...args);
             }
         }
     }
@@ -405,6 +422,7 @@ class Dynx {
         }
         this._isFinal = true;
         this.update(true);
+        this._triggerEvent('finalize', this._value);
         return this;
     }
 
@@ -420,12 +438,11 @@ class Dynx {
             if(this.isFinal)
                 throw new Error('[Dynx] Cannot change the value of a finalized Dynx.');
             this._init_value = value;
-        }else{
-            this._init_value = this._value;
         }
         delete this._exp;
         this._isFinal = true;
         this.update(true);
+        this._triggerEvent('constant', this._value);
         return this;
     }
 }
@@ -445,6 +462,8 @@ Dynx._childStack = function(){
     });
     return stack;
 }();
+//add to class for easy access
+Dynx.INVALID = INVALID;
 
 
 //defined a wrapper function that allows new-less calls to set the expression.
