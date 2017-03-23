@@ -9,7 +9,7 @@
     "email": "jon.hartnett@greymatter.ai"
   },
   "license": "UNLICENSED",
-  "module": "src/dynx.js",
+  "jsnext:main": "src/dynx.js",
   "main": "dest/node/dynx.js",
   "browser": "dest/web/dynx.js",
   "build": {
