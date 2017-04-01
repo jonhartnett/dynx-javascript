@@ -193,11 +193,11 @@ class Dynx {
 
             //evaluate expression
             if(this._exp)
-                newValue = this._exp.call(this);
+                newValue = this._exp();
             //filter value
             if(this.filters)
                 for(let filter of this.filters)
-                    newValue = filter.call(this, newValue);
+                    newValue = this::filter(newValue);
 
             Dynx._childStack.pop();
         }
@@ -244,9 +244,9 @@ class Dynx {
                 if(arr.length != 0){
                     for(let lis of arr){
                         if(lis.dynxListener)
-                            Dynx._queue.push(() => lis.call(this, ...args));
+                            Dynx._queue.push(() => this::lis(...args));
                         else
-                            lis.call(this, ...args);
+                            this::lis(...args);
                     }
                     this[arrName] = arr;
                 }else{
@@ -264,7 +264,7 @@ class Dynx {
             let arr = this[arrName];
             if(arr){
                 for(let lis of arr)
-                    lis.call(this, ...args);
+                    this::lis(...args);
             }
         }
     }
@@ -292,7 +292,7 @@ class Dynx {
     _addListener(arrName, func, immediate=false, priority=0){
         if(this.isConstant){
             if(immediate)
-                func();
+                this::func(this._value);
             else
                 console.error('[Dynx] Subscription to a finalized Dynx is unnecessary!');
         }else{
@@ -317,7 +317,7 @@ class Dynx {
             }
 
             if(immediate)
-                func();
+                this::func(this._value);
         }
     }
 
