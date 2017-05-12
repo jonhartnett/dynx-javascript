@@ -1,4 +1,6 @@
 export function init(Dynx){
+    //TODO: Reevaluate this and decide what changes/improvements I want to make
+
     /**
      * An condition function for a Dynx.
      * @typedef {Function} Condition
@@ -161,17 +163,23 @@ export function init(Dynx){
 
     /**
      * Creates a new attribute Dynx.
-     * @param {string|Dynx} name - The attribute to get on the value.
+     * @param {(string|Dynx)[]} keys - The attribute to get on the value.
      * @returns {Dynx} A new attribute Dynx.
      */
-    Dynx.prototype.attr = function(name){
-        let trans = new Dynx(undefined);
+    Dynx.prototype.attr = function(...keys){
+        let trans = new Dynx();
         trans.exp = () => {
             let obj = this.value;
-            if(obj){
-                return obj[resolve(name)];
+            if(obj === INVALID)
+                return INVALID;
+            for(let key of keys){
+                if(obj == null)
+                    break;
+                obj = obj[resolve(key)];
             }
+            return obj;
         };
+        trans.finalize();
         return trans;
     };
 
