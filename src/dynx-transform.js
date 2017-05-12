@@ -170,8 +170,8 @@ export function init(Dynx){
         let trans = new Dynx();
         trans.exp = () => {
             let obj = this.value;
-            if(obj === INVALID)
-                return INVALID;
+            if(obj === Dynx.INVALID)
+                return Dynx.INVALID;
             for(let key of keys){
                 if(obj == null)
                     break;
