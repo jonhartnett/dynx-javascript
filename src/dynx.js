@@ -5,7 +5,6 @@ import {init as initTransform} from "./dynx-transform";
  * @type {Symbol}
  */
 export const INVALID = Symbol('invalid');
-const NO_ARG = Symbol('NoArg');
 
 /**
  * An expression function for a Dynx.
@@ -407,13 +406,13 @@ class Dynx {
 
     /**
      * Makes this Dynx final with the given expression. If the value is omitted, uses the current expression.
-     * @param {Expression} exp - The expression to finalize with.
+     * @param {Expression} [exp] - The expression to finalize with.
      * @return {Dynx} This for chaining.
      */
-    finalize(exp=NO_ARG){
+    finalize(exp){
         if(this.isFinal)
             return this;
-        if(exp !== NO_ARG){
+        if(arguments.length !== 0){
             if(this.isFinal)
                 throw new Error('[Dynx] Cannot change the value of a finalized Dynx.');
             if(typeof exp !== 'function')
@@ -431,10 +430,10 @@ class Dynx {
      * @param {*} [value] - The value to mark as a constant with.
      * @return {Dynx} This for chaining.
      */
-    constant(value=NO_ARG){
+    constant(value){
         if(this.isConstant)
             return this;
-        if(value !== NO_ARG){
+        if(arguments.length !== 0){
             if(this.isFinal)
                 throw new Error('[Dynx] Cannot change the value of a finalized Dynx.');
             this._init_value = value;
